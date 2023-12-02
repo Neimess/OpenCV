@@ -123,9 +123,60 @@ std::vector<std::complex<double>> ifft(std::vector<std::complex<double>> &inputA
     return inputArray;
 }
 
+void krasivSpectr(cv::Mat &magI)
+{
+    int cx = magI.cols / 2;
+    int cy = magI.rows / 2;
+    Mat q0(magI, Rect(0, 0, cx, cy));   // Top-Left - Create a ROI per quadrant
+    Mat q1(magI, Rect(cx, 0, cx, cy));  // Top-Right
+    Mat q2(magI, Rect(0, cy, cx, cy));  // Bottom-Left
+    Mat q3(magI, Rect(cx, cy, cx, cy)); // Bottom-Right
+    Mat tmp;                            // swap quadrants (Top-Left with Bottom-Right)
+    q0.copyTo(tmp);
+    q3.copyTo(q0);
+    tmp.copyTo(q3);
+    q1.copyTo(tmp); // swap quadrant (Top-Right with Bottom-Left)
+    q2.copyTo(q1);
+    tmp.copyTo(q2);
+}
+
+void displayDFT(cv::Mat& input, const std::string& windowName) {
+    cv::Mat padded;
+    int m = cv::getOptimalDFTSize(input.rows);
+    int n = cv::getOptimalDFTSize(input.cols);
+    cv::copyMakeBorder(input, padded, 0, m - input.rows, 0, n - input.cols, cv::BORDER_CONSTANT, cv::Scalar::all(0));
+
+    // Создание комплексного массива для хранения результата преобразования Фурье
+    cv::Mat planes[] = {cv::Mat_<float>(padded), cv::Mat::zeros(padded.size(), CV_32F)};
+    cv::Mat complexI;
+    cv::merge(planes, 2, complexI);
+
+    // Применение прямого преобразования Фурье
+    cv::dft(complexI, complexI);
+
+    // Расчет магнитуды и логарифмирование
+    cv::split(complexI, planes);          // planes[0] - действительная часть, planes[1] - мнимая часть
+    cv::magnitude(planes[0], planes[1], planes[0]);  // planes[0] = magnitude
+    cv::Mat magI = planes[0];
+
+    // Нормализация для отображения
+    magI += cv::Scalar::all(1);
+    cv::log(magI, magI);
+
+    // Обрезка изображения
+    magI = magI(cv::Rect(0, 0, magI.cols & -2, magI.rows & -2));
+
+    krasivSpectr(magI);
+    // Нормализация
+    cv::normalize(magI, magI, 0, 1, cv::NORM_MINMAX);
+    cv::imshow(windowName, magI);
+}
 int main()
 {
     cv::Mat image = cv::imread("D:/repositories/OpenCV/photo_2023-12-02_19-40-35.jpg", cv::IMREAD_GRAYSCALE);
+    if (image.empty()){
+        std::cout << "Could't open image" << std::endl;
+    }
     cv::resize(image, image, cv::Size(128, 128));
     std::vector<uchar> imageVector(image.begin<uchar>(), image.end<uchar>());
     std::vector<std::complex<double>> complexVector;
@@ -134,9 +185,40 @@ int main()
     {
         complexVector.push_back(std::complex<double>(val, 0));
     }
-    Mat padded; // expand input image to optimal size
-    int m = getOptimalDFTSize(image.rows);
-    int n = getOptimalDFTSize(image.cols); // on the border add zero values
+
+    // Создание ядер для сверток
+    cv::Mat sobelX, sobelY;
+    cv::Sobel(image, sobelX, CV_32F, 1, 0);
+    cv::Sobel(image, sobelY, CV_32F, 0, 1);
+
+    cv::Mat boxFilter;
+    cv::boxFilter(image, boxFilter, -1, cv::Size(3,3));
+
+    cv::Mat laplacian;
+    cv::Laplacian(image, laplacian, CV_32F);
+
+    // Отображаем магнитуду Фурье для каждого изображения
+    displayDFT(image, "Original Image DFT Magnitude");
+    displayDFT(sobelX, "Sobel X DFT Magnitude");
+    displayDFT(sobelY, "Sobel Y DFT Magnitude");
+    displayDFT(boxFilter, "Box Filter DFT Magnitude");
+    displayDFT(laplacian, "Laplacian DFT Magnitude");
+
+    // Отображение исходного изображения и сверток
+    cv::imshow("Original Image", image);
+    cv::imshow("Sobel X", sobelX);
+    cv::imshow("Sobel Y", sobelY);
+    cv::imshow("Box Filter", boxFilter);
+    cv::imshow("Laplacian", laplacian);
+
+    
+
+    cv::waitKey(0);
+
+
+    // Mat padded; // expand input image to optimal size
+    // int m = getOptimalDFTSize(image.rows);
+    // int n = getOptimalDFTSize(image.cols); // on the border add zero values
     // copyMakeBorder(image, padded, 0, m - image.rows, 0, n - image.cols, BORDER_CONSTANT, Scalar::all(0));
     // Mat planes[] = {Mat_<float>(padded), Mat::zeros(padded.size(), CV_32F)};
     // Mat complexI;
@@ -156,19 +238,7 @@ int main()
     // // crop the spectrum, if it has an odd number of rows or columns
     // magI = magI(Rect(0, 0, magI.cols & -2, magI.rows & -2));
     // // rearrange the quadrants of Fourier image  so that the origin is at the image center
-    // int cx = magI.cols / 2;
-    // int cy = magI.rows / 2;
-    // Mat q0(magI, Rect(0, 0, cx, cy));   // Top-Left - Create a ROI per quadrant
-    // Mat q1(magI, Rect(cx, 0, cx, cy));  // Top-Right
-    // Mat q2(magI, Rect(0, cy, cx, cy));  // Bottom-Left
-    // Mat q3(magI, Rect(cx, cy, cx, cy)); // Bottom-Right
-    // Mat tmp;                            // swap quadrants (Top-Left with Bottom-Right)
-    // q0.copyTo(tmp);
-    // q3.copyTo(q0);
-    // tmp.copyTo(q3);
-    // q1.copyTo(tmp); // swap quadrant (Top-Right with Bottom-Left)
-    // q2.copyTo(q1);
-    // tmp.copyTo(q2);
+    // krasivSpectr(magI);
     // normalize(magI, magI, 0, 1, NORM_MINMAX); // Transform the matrix with float values into a
     //                                           // viewable image form (float between values 0 and 1).
     // imshow("Input Image", image);             // Show the result
@@ -182,25 +252,25 @@ int main()
     // reversed.convertTo(reversed, CV_8U, 255);
     // imshow("reversed", reversed);
     // waitKey(0);
-    auto start_custom = std::chrono::high_resolution_clock::now();
-    std::vector<std::complex<double>> result = DFT(complexVector);
-    auto end_custom = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed_custom = end_custom - start_custom;
-    std::cout << "Time wrapped by DFT " << elapsed_custom.count() << " seconds" << std::endl;
+    // auto start_custom = std::chrono::high_resolution_clock::now();
+    // std::vector<std::complex<double>> result = DFT(complexVector);
+    // auto end_custom = std::chrono::high_resolution_clock::now();
+    // std::chrono::duration<double> elapsed_custom = end_custom - start_custom;
+    // std::cout << "Time wrapped by DFT " << elapsed_custom.count() << " seconds" << std::endl;
     
-    std::cout << std::endl;
-    auto start_radix = std::chrono::high_resolution_clock::now();
-    std::vector<std::complex<double>> radix = fft(complexVector);
-    auto end_radix = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed_radix = end_radix - start_radix;
-    std::cout << "Time wrapped by Radix Method FFT " << elapsed_radix.count() << "seconds" << std::endl;
+    // std::cout << std::endl;
+    // auto start_radix = std::chrono::high_resolution_clock::now();
+    // std::vector<std::complex<double>> radix = fft(complexVector);
+    // auto end_radix = std::chrono::high_resolution_clock::now();
+    // std::chrono::duration<double> elapsed_radix = end_radix - start_radix;
+    // std::cout << "Time wrapped by Radix Method FFT " << elapsed_radix.count() << "seconds" << std::endl;
 
-    auto start_cv_fft = std::chrono::high_resolution_clock::now();
-    copyMakeBorder(image, padded, 0, m - image.rows, 0, n - image.cols, BORDER_CONSTANT, Scalar::all(0));
-    image.convertTo(image, CV_32F);
-    cv::dft(image, image, cv::DFT_SCALE | cv::DFT_REAL_OUTPUT);            // this way the result may fit in the source matrix
-    auto end_cv_fft = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed_cv = end_cv_fft - start_cv_fft;
-    std::cout << "Time wrapped by Radix Method CV FFT " << elapsed_cv.count() << " seconds" << std::endl;
+    // auto start_cv_fft = std::chrono::high_resolution_clock::now();
+    // copyMakeBorder(image, padded, 0, m - image.rows, 0, n - image.cols, BORDER_CONSTANT, Scalar::all(0));
+    // image.convertTo(image, CV_32F);
+    // cv::dft(image, image, cv::DFT_SCALE | cv::DFT_REAL_OUTPUT);            // this way the result may fit in the source matrix
+    // auto end_cv_fft = std::chrono::high_resolution_clock::now();
+    // std::chrono::duration<double> elapsed_cv = end_cv_fft - start_cv_fft;
+    // std::cout << "Time wrapped by Radix Method CV FFT " << elapsed_cv.count() << " seconds" << std::endl;
     return 0;
 }
