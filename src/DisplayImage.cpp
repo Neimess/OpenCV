@@ -140,6 +140,46 @@ void krasivSpectr(cv::Mat &magI)
     tmp.copyTo(q2);
 }
 
+void displayIDFT(cv::Mat& input, const std::string& windowName) {
+    cv::Mat reversed;
+    cv::idft(input, reversed, cv::DFT_SCALE | cv::DFT_REAL_OUTPUT);
+    normalize(reversed, reversed, 0, 1, cv::NORM_MINMAX);
+    reversed.convertTo(reversed, CV_8U, 255);
+    imshow(windowName + " revers", reversed);
+}
+
+void multiplyspectors(cv::Mat& complex1, cv::Mat& complex2)
+{
+    if (complex1.size() != complex2.size())
+    {
+        std::cerr << "for multiplyspectors size of image must be equal";
+        return;
+    }
+    for (int i = 0; i < complex1.rows; ++i) {
+    for (int j = 0; j < complex2.cols; ++j) {
+        complex1.at<Vec2f>(i, j) = complex1.at<Vec2f>(i, j) * complex2.at<float>(i, j);
+        }
+    }
+}
+
+void highPassFilter(cv::Mat& complexI, size_t radius) {
+    Mat highPassFilter = Mat::ones(complexI.rows, complexI.cols, CV_32F);
+    int centerX = highPassFilter.cols / 2;
+    int centerY = highPassFilter.rows / 2;
+    circle(highPassFilter, Point(centerX, centerY), radius, Scalar(0), -1);
+    multiplyspectors(complexI, highPassFilter);
+    
+}
+
+void lowPassFilter(cv::Mat& complexI, size_t radius) {
+    Mat lowPassFilter = Mat::zeros(complexI.rows, complexI.cols, CV_32F);
+    int centerX = lowPassFilter.cols / 2;
+    int centerY = lowPassFilter.rows / 2;
+    circle(lowPassFilter, Point(centerX, centerY), radius, Scalar(1), -1);
+    multiplyspectors(complexI, lowPassFilter);
+    
+}
+
 void displayDFT(cv::Mat& input, const std::string& windowName) {
     cv::Mat padded;
     int m = cv::getOptimalDFTSize(input.rows);
@@ -153,7 +193,8 @@ void displayDFT(cv::Mat& input, const std::string& windowName) {
 
     // Применение прямого преобразования Фурье
     cv::dft(complexI, complexI);
-
+    highPassFilter(complexI, 60);
+    // lowPassFilter(complexI, 60);
     // Расчет магнитуды и логарифмирование
     cv::split(complexI, planes);          // planes[0] - действительная часть, planes[1] - мнимая часть
     cv::magnitude(planes[0], planes[1], planes[0]);  // planes[0] = magnitude
@@ -162,22 +203,47 @@ void displayDFT(cv::Mat& input, const std::string& windowName) {
     // Нормализация для отображения
     magI += cv::Scalar::all(1);
     cv::log(magI, magI);
-
+    
     // Обрезка изображения
     magI = magI(cv::Rect(0, 0, magI.cols & -2, magI.rows & -2));
-
+    
+    krasivSpectr(magI);
     krasivSpectr(magI);
     // Нормализация
     cv::normalize(magI, magI, 0, 1, cv::NORM_MINMAX);
     cv::imshow(windowName, magI);
+    displayIDFT(complexI, windowName);
 }
+
+void processLicensePlate(cv::Mat& inputImage, cv::Mat& templateImage) {
+    // Корреляция изображений
+    cv::Mat result;
+    cv::matchTemplate(inputImage, templateImage, result, cv::TM_CCORR);
+
+    // Поиск максимального значения в полученном изображении
+    double minValue, maxValue;
+    cv::Point minLocation, maxLocation;
+    cv::minMaxLoc(result, &minValue, &maxValue, &minLocation, &maxLocation);
+
+    // Отнять от максимального значения небольшое число
+    double threshold = maxValue - 0.01;
+
+    // Пороговая фильтрация
+    cv::Mat thresholded;
+    cv::threshold(result, thresholded, threshold, 1.0, cv::THRESH_BINARY);
+
+    // Вывод результата
+    cv::imshow("Thresholded Image", thresholded);
+    cv::waitKey(0);
+}
+
 int main()
 {
-    cv::Mat image = cv::imread("D:/repositories/OpenCV/photo_2023-12-02_19-40-35.jpg", cv::IMREAD_GRAYSCALE);
+    cv::Mat image = cv::imread("D:/repositories/OpenCV/src/220px-Lenna.png", cv::IMREAD_GRAYSCALE);
     if (image.empty()){
         std::cout << "Could't open image" << std::endl;
     }
-    cv::resize(image, image, cv::Size(128, 128));
+    // cv::resize(image, image, cv::Size(128, 128));
     std::vector<uchar> imageVector(image.begin<uchar>(), image.end<uchar>());
     std::vector<std::complex<double>> complexVector;
 
@@ -212,7 +278,8 @@ int main()
     cv::imshow("Laplacian", laplacian);
 
     
-
+    // Обратное преобразование Фурье
+    cv::idft(sobelX, sobelX, cv::DFT_SCALE | cv::DFT_REAL_OUTPUT);
     cv::waitKey(0);
 
 
