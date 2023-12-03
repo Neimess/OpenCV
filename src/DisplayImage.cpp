@@ -237,50 +237,124 @@ void processLicensePlate(cv::Mat& inputImage, cv::Mat& templateImage) {
     cv::waitKey(0);
 }
 
+int correlateWith(Mat& input, Mat& sample, const float thresholdMul)
+{
+	if (sample.empty())
+	{
+		return -1;
+	}
+	if (sample.empty())
+	{
+		return -2;
+	}
+	sample.convertTo(sample, CV_32FC1);
+	Size dftSize;
+	dftSize.width = getOptimalDFTSize(input.cols + sample.cols - 1);
+	dftSize.height = getOptimalDFTSize(input.rows + sample.rows - 1);
+	Mat expandedImage(dftSize, CV_32FC1, Scalar(0));
+	Mat tempROI(expandedImage, Rect(0, 0, input.cols, input.rows));
+	input.copyTo(tempROI);
+	Mat expandedSample(dftSize, CV_32FC1, Scalar(0));
+	Mat tempROI2(expandedSample, Rect(0, 0, sample.cols, sample.rows));
+	sample.copyTo(tempROI2);
+
+	Mat dftOfImage(expandedImage.cols, expandedImage.rows, CV_32FC2); 
+	dft(expandedImage, dftOfImage, DFT_COMPLEX_OUTPUT);
+	Mat dftOfSample(expandedSample.cols, expandedSample.rows, CV_32FC2); 
+	dft(expandedSample, dftOfSample, DFT_COMPLEX_OUTPUT);
+
+	Mat dftCorrelation(dftSize, CV_32FC2);
+	mulSpectrums(dftOfImage, dftOfSample, dftCorrelation, true);
+	// showSpectre(dftCorrelation, "Correlation spectrum");
+	imshow("Image", expandedImage);
+	imshow("Sample_", expandedSample);
+
+
+	Mat uncroppedOutputImage(dftSize, CV_32FC2);
+	idft(dftCorrelation, uncroppedOutputImage, DFT_INVERSE | DFT_REAL_OUTPUT);
+	normalize(uncroppedOutputImage, uncroppedOutputImage, 0.0f, 1.0f, NORM_MINMAX);
+
+	
+	Mat croppedImage(uncroppedOutputImage, Rect(0, 0, input.cols, input.rows));
+	imshow("Before threshold", croppedImage);
+    
+	float maxIntensity = 0;
+	for (int i = 0; i < input.rows; i++)
+	{
+		for (int j = 0; j < input.cols; j++)
+		{
+			const float currentPixel = croppedImage.at<float>(i, j);
+			if (currentPixel > maxIntensity)
+				maxIntensity = currentPixel;
+		}
+	}
+	const float threshold = thresholdMul * maxIntensity;
+	for (int i = 0; i < input.rows; i++)
+	{
+		for (int j = 0; j < input.cols; j++)
+		{
+			const float currentPixel = croppedImage.at<float>(i, j);
+			if (currentPixel < threshold)
+				croppedImage.at<float>(i, j) = 0;
+		}
+	}
+    imshow("cropped image", croppedImage);
+	waitKey(0);
+}
+
 int main()
 {
-    cv::Mat image = cv::imread("D:/repositories/OpenCV/src/220px-Lenna.png", cv::IMREAD_GRAYSCALE);
+    cv::Mat image = cv::imread("D:/repositories/OpenCV/src/nomer2-1024x363-800x800.jpg", cv::IMREAD_GRAYSCALE);
     if (image.empty()){
         std::cout << "Could't open image" << std::endl;
     }
+    imshow("original", image);
+    image.convertTo(image, CV_32FC1);
+    Mat sample = imread("D:/repositories/OpenCV/src/symbol_0.jpg", IMREAD_GRAYSCALE);
+    
+    imshow("Sample", sample);
+    sample.convertTo(sample, CV_32FC1);
+    correlateWith(image, sample, 0.98);
+    waitKey(0);
     // cv::resize(image, image, cv::Size(128, 128));
-    std::vector<uchar> imageVector(image.begin<uchar>(), image.end<uchar>());
-    std::vector<std::complex<double>> complexVector;
+    // std::vector<uchar> imageVector(image.begin<uchar>(), image.end<uchar>());
+    // std::vector<std::complex<double>> complexVector;
 
-    for (const auto &val : imageVector)
-    {
-        complexVector.push_back(std::complex<double>(val, 0));
-    }
+    // for (const auto &val : imageVector)
+    // {
+    //     complexVector.push_back(std::complex<double>(val, 0));
+    // }
 
-    // Создание ядер для сверток
-    cv::Mat sobelX, sobelY;
-    cv::Sobel(image, sobelX, CV_32F, 1, 0);
-    cv::Sobel(image, sobelY, CV_32F, 0, 1);
+    // // Создание ядер для сверток
+    // cv::Mat sobelX, sobelY;
+    // cv::Sobel(image, sobelX, CV_32F, 1, 0);
+    // cv::Sobel(image, sobelY, CV_32F, 0, 1);
 
-    cv::Mat boxFilter;
-    cv::boxFilter(image, boxFilter, -1, cv::Size(3,3));
+    // cv::Mat boxFilter;
+    // cv::boxFilter(image, boxFilter, -1, cv::Size(3,3));
 
-    cv::Mat laplacian;
-    cv::Laplacian(image, laplacian, CV_32F);
+    // cv::Mat laplacian;
+    // cv::Laplacian(image, laplacian, CV_32F);
 
-    // Отображаем магнитуду Фурье для каждого изображения
-    displayDFT(image, "Original Image DFT Magnitude");
-    displayDFT(sobelX, "Sobel X DFT Magnitude");
-    displayDFT(sobelY, "Sobel Y DFT Magnitude");
-    displayDFT(boxFilter, "Box Filter DFT Magnitude");
-    displayDFT(laplacian, "Laplacian DFT Magnitude");
+    // // Отображаем магнитуду Фурье для каждого изображения
+    // displayDFT(image, "Original Image DFT Magnitude");
+    // displayDFT(sobelX, "Sobel X DFT Magnitude");
+    // displayDFT(sobelY, "Sobel Y DFT Magnitude");
+    // displayDFT(boxFilter, "Box Filter DFT Magnitude");
+    // displayDFT(laplacian, "Laplacian DFT Magnitude");
 
-    // Отображение исходного изображения и сверток
-    cv::imshow("Original Image", image);
-    cv::imshow("Sobel X", sobelX);
-    cv::imshow("Sobel Y", sobelY);
-    cv::imshow("Box Filter", boxFilter);
-    cv::imshow("Laplacian", laplacian);
+    // // Отображение исходного изображения и сверток
+    // cv::imshow("Original Image", image);
+    // cv::imshow("Sobel X", sobelX);
+    // cv::imshow("Sobel Y", sobelY);
+    // cv::imshow("Box Filter", boxFilter);
+    // cv::imshow("Laplacian", laplacian);
 
     
-    // Обратное преобразование Фурье
-    cv::idft(sobelX, sobelX, cv::DFT_SCALE | cv::DFT_REAL_OUTPUT);
-    cv::waitKey(0);
+    // // Обратное преобразование Фурье
+    // cv::idft(sobelX, sobelX, cv::DFT_SCALE | cv::DFT_REAL_OUTPUT);
+    
+    // cv::waitKey(0);
 
 
     // Mat padded; // expand input image to optimal size
