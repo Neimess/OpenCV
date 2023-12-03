@@ -17,6 +17,9 @@ bool isPowerOfTwo(size_t n)
     return (n & (n - 1)) == 0;
 }
 
+
+
+
 std::vector<std::complex<double>> DFT(const std::vector<std::complex<double>> &vector)
 {
     int N = vector.size();
@@ -123,7 +126,7 @@ std::vector<std::complex<double>> ifft(std::vector<std::complex<double>> &inputA
     return inputArray;
 }
 
-void krasivSpectr(cv::Mat &magI)
+void swapQuadrants(cv::Mat &magI)
 {
     int cx = magI.cols / 2;
     int cy = magI.rows / 2;
@@ -193,8 +196,8 @@ void displayDFT(cv::Mat& input, const std::string& windowName) {
 
     // Применение прямого преобразования Фурье
     cv::dft(complexI, complexI);
-    highPassFilter(complexI, 60);
-    // lowPassFilter(complexI, 60);
+    highPassFilter(complexI, 100);
+    // lowPassFilter(complexI, 100);
     // Расчет магнитуды и логарифмирование
     cv::split(complexI, planes);          // planes[0] - действительная часть, planes[1] - мнимая часть
     cv::magnitude(planes[0], planes[1], planes[0]);  // planes[0] = magnitude
@@ -207,37 +210,15 @@ void displayDFT(cv::Mat& input, const std::string& windowName) {
     // Обрезка изображения
     magI = magI(cv::Rect(0, 0, magI.cols & -2, magI.rows & -2));
     
-    krasivSpectr(magI);
-    krasivSpectr(magI);
+    swapQuadrants(magI);
+    swapQuadrants(magI);
     // Нормализация
     cv::normalize(magI, magI, 0, 1, cv::NORM_MINMAX);
     cv::imshow(windowName, magI);
     displayIDFT(complexI, windowName);
 }
 
-void processLicensePlate(cv::Mat& inputImage, cv::Mat& templateImage) {
-    // Корреляция изображений
-    cv::Mat result;
-    cv::matchTemplate(inputImage, templateImage, result, cv::TM_CCORR);
-
-    // Поиск максимального значения в полученном изображении
-    double minValue, maxValue;
-    cv::Point minLocation, maxLocation;
-    cv::minMaxLoc(result, &minValue, &maxValue, &minLocation, &maxLocation);
-
-    // Отнять от максимального значения небольшое число
-    double threshold = maxValue - 0.01;
-
-    // Пороговая фильтрация
-    cv::Mat thresholded;
-    cv::threshold(result, thresholded, threshold, 1.0, cv::THRESH_BINARY);
-
-    // Вывод результата
-    cv::imshow("Thresholded Image", thresholded);
-    cv::waitKey(0);
-}
-
-int correlateWith(Mat& input, Mat& sample, const float thresholdMul)
+int correlate(Mat& input, Mat& sample, const float thresholdMul)
 {
 	if (sample.empty())
 	{
@@ -265,9 +246,8 @@ int correlateWith(Mat& input, Mat& sample, const float thresholdMul)
 
 	Mat dftCorrelation(dftSize, CV_32FC2);
 	mulSpectrums(dftOfImage, dftOfSample, dftCorrelation, true);
-	// showSpectre(dftCorrelation, "Correlation spectrum");
-	imshow("Image", expandedImage);
-	imshow("Sample_", expandedSample);
+	// imshow("Image", expandedImage);
+	// imshow("Sample_", expandedSample);
 
 
 	Mat uncroppedOutputImage(dftSize, CV_32FC2);
@@ -304,19 +284,18 @@ int correlateWith(Mat& input, Mat& sample, const float thresholdMul)
 
 int main()
 {
-    cv::Mat image = cv::imread("D:/repositories/OpenCV/src/nomer2-1024x363-800x800.jpg", cv::IMREAD_GRAYSCALE);
+    cv::Mat image = cv::imread("D:/repositories/OpenCV/images/nomera.jpg", cv::IMREAD_GRAYSCALE);
     if (image.empty()){
         std::cout << "Could't open image" << std::endl;
     }
     imshow("original", image);
     image.convertTo(image, CV_32FC1);
-    Mat sample = imread("D:/repositories/OpenCV/src/symbol_0.jpg", IMREAD_GRAYSCALE);
+    Mat sample = imread("D:/repositories/OpenCV/images/symbol_6.jpg", IMREAD_GRAYSCALE);
     
     imshow("Sample", sample);
-    sample.convertTo(sample, CV_32FC1);
-    correlateWith(image, sample, 0.98);
+    correlate(image, sample, 0.999);
     waitKey(0);
-    // cv::resize(image, image, cv::Size(128, 128));
+    // cv::resize(image, image, cv::Size(128, 256));
     // std::vector<uchar> imageVector(image.begin<uchar>(), image.end<uchar>());
     // std::vector<std::complex<double>> complexVector;
 
@@ -324,8 +303,25 @@ int main()
     // {
     //     complexVector.push_back(std::complex<double>(val, 0));
     // }
+    // auto start_custom = std::chrono::high_resolution_clock::now();
+    // DFT(complexVector);
+    // auto end_custom = std::chrono::high_resolution_clock::now();
+    // std::chrono::duration<double> elapsed_custom = end_custom - start_custom;
+    // std::cout << "Time wrapped by DFT " << elapsed_custom.count() << " seconds" << std::endl;
 
-    // // Создание ядер для сверток
+    // auto start_custom_radix = std::chrono::high_resolution_clock::now();
+    // fft(complexVector);
+    // auto end_custom_radix = std::chrono::high_resolution_clock::now();
+    // std::chrono::duration<double> elapsed_custom_radix = end_custom_radix - start_custom_radix;
+    // std::cout << "Time wrapped by FFT " << elapsed_custom_radix.count() << " seconds" << std::endl;
+    // auto start_custom_cv = std::chrono::high_resolution_clock::now();
+    
+    // auto end_custom_cv = std::chrono::high_resolution_clock::now();
+    // image.convertTo(image, CV_32F);
+    // cv::dft(image, image, cv::DFT_SCALE | cv::DFT_REAL_OUTPUT); 
+    // std::chrono::duration<double> elapsed_custom_cv = end_custom_cv - start_custom_cv;
+    // std::cout << "Time wrapped by FFT " << elapsed_custom_cv.count() << " seconds" << std::endl;
+    // Создание ядер для сверток
     // cv::Mat sobelX, sobelY;
     // cv::Sobel(image, sobelX, CV_32F, 1, 0);
     // cv::Sobel(image, sobelY, CV_32F, 0, 1);
@@ -336,14 +332,14 @@ int main()
     // cv::Mat laplacian;
     // cv::Laplacian(image, laplacian, CV_32F);
 
-    // // Отображаем магнитуду Фурье для каждого изображения
+    // Отображаем магнитуду Фурье для каждого изображения
     // displayDFT(image, "Original Image DFT Magnitude");
     // displayDFT(sobelX, "Sobel X DFT Magnitude");
     // displayDFT(sobelY, "Sobel Y DFT Magnitude");
     // displayDFT(boxFilter, "Box Filter DFT Magnitude");
     // displayDFT(laplacian, "Laplacian DFT Magnitude");
 
-    // // Отображение исходного изображения и сверток
+    // Отображение исходного изображения и сверток
     // cv::imshow("Original Image", image);
     // cv::imshow("Sobel X", sobelX);
     // cv::imshow("Sobel Y", sobelY);
@@ -354,7 +350,7 @@ int main()
     // // Обратное преобразование Фурье
     // cv::idft(sobelX, sobelX, cv::DFT_SCALE | cv::DFT_REAL_OUTPUT);
     
-    // cv::waitKey(0);
+    cv::waitKey(0);
 
 
     // Mat padded; // expand input image to optimal size
@@ -393,11 +389,7 @@ int main()
     // reversed.convertTo(reversed, CV_8U, 255);
     // imshow("reversed", reversed);
     // waitKey(0);
-    // auto start_custom = std::chrono::high_resolution_clock::now();
-    // std::vector<std::complex<double>> result = DFT(complexVector);
-    // auto end_custom = std::chrono::high_resolution_clock::now();
-    // std::chrono::duration<double> elapsed_custom = end_custom - start_custom;
-    // std::cout << "Time wrapped by DFT " << elapsed_custom.count() << " seconds" << std::endl;
+    
     
     // std::cout << std::endl;
     // auto start_radix = std::chrono::high_resolution_clock::now();
