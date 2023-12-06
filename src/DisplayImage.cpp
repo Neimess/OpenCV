@@ -27,14 +27,12 @@ cv::Mat DFT_IMAGE(cv::Mat inputImage)
     {
         for (int l = 0; l < cols; ++l)
         {
-            // std::complex<double> sum = {0.0, 0.0};
             for (int m = 0; m < rows; ++m)
             {
                 for (int n = 0; n < cols; ++n)
                 {
                     double angle = -2.0 * M_PI * ((static_cast<double>(m * k) / rows) + (static_cast<double>(n * l) / cols));
-                    // std::complex<double> complex_exp = {cos(angle), sin(angle)};
-                    // sum += std::complex<double>(inputImage.at<uint8_t>(m, n), 0) * complex_exp;
+                    
                     dftReal.at<float>(k, l) += inputImage.at<float>(m, n) * std::cos(angle);
                     dftImag.at<float>(k, l) += inputImage.at<float>(m, n) * std::sin(angle);
                     
@@ -329,8 +327,6 @@ int correlate(Mat &input, Mat &sample, const float thresholdMul)
 
     Mat dftCorrelation(dftSize, CV_32FC2);
     mulSpectrums(dftOfImage, dftOfSample, dftCorrelation, true);
-    // imshow("Image", expandedImage);
-    // imshow("Sample_", expandedSample);
 
     Mat uncroppedOutputImage(dftSize, CV_32FC2);
     idft(dftCorrelation, uncroppedOutputImage, DFT_INVERSE | DFT_REAL_OUTPUT);
@@ -373,7 +369,7 @@ int main()
     cv::resize(image, image, cv::Size(128, 128));
     imshow("Input Image", image);
     std::vector<std::complex<double>> InputArray = convertMatToVector(image);
-    // image.convertTo(image, CV_32F);
+    image.convertTo(image, CV_32F);
     // cv::resize(image, image, cv::Size(3,3));
     // imshow("original", image);
     // image.convertTo(image, CV_32FC1);
@@ -437,11 +433,11 @@ int main()
     Mat complexI;
     merge(planes, 2, complexI); // Add to the expanded another plane with zeros
     // dft(complexI, complexI);            // this way the result may fit in the source matrix
-    // complexI = DFT_IMAGE(image);
+    complexI = DFT_IMAGE(image);
     // std::vector<std::complex<double>> complexVectorDFT = DFT(complexVector);
     // complexI = convertComplexVectorToMat(complexVectorDFT, image.rows);
-    fft(InputArray);
-    complexI = convertComplexVectorToMat(InputArray, m);
+    // fft(InputArray);
+    // complexI = convertComplexVectorToMat(InputArray, m);
     // compute the magnitude and switch to logarithmic scale
     // => log(1 + sqrt(Re(DFT(I))^2 + Im(DFT(I))^2))
     split(complexI, planes);                    // planes[0] = Re(DFT(I), planes[1] = Im(DFT(I))
@@ -460,13 +456,13 @@ int main()
     Mat reversed;
     // // std::vector<std::complex<double>> complexVectorIDFT = IDFT(complexVectorDFT);
     // // reversed = convertComplexVectorToMat(complexVectorIDFT, image.rows);
-    // reversed = IDFT_IMAGE(complexI);
-    ifft(InputArray);
-    reversed = convertComplexVectorToMat(InputArray, m);
+    reversed = IDFT_IMAGE(complexI);
+    // ifft(InputArray);
+    // reversed = convertComplexVectorToMat(InputArray, m);
     // cv::idft(complexI, reversed, cv::DFT_SCALE | cv::DFT_REAL_OUTPUT);
-    // normalize(reversed, reversed, 0, 1, cv::NORM_MINMAX);
-    // reversed.convertTo(reversed, CV_8U, 255);
-    // imshow("reversed", reversed);
+    normalize(reversed, reversed, 0, 1, cv::NORM_MINMAX);
+    reversed.convertTo(reversed, CV_8U, 255);
+    imshow("reversed", reversed);
     waitKey(0);
 
     // std::cout << std::endl;
