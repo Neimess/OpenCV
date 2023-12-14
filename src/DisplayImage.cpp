@@ -34,8 +34,8 @@ cv::Mat DFT_IMAGE(cv::Mat inputImage)
                 {
                     double angle = -2.0 * M_PI * ((static_cast<double>(m * k) / rows) + (static_cast<double>(n * l) / cols));
 
-                    dftReal.at<float>(k, l) += inputImage.at<float>(m, n) * std::cos(angle) - inputImage.at<float>(m, n) * std::sin(angle);
-                    dftImag.at<float>(k, l) += inputImage.at<float>(m, n) * std::sin(angle) + inputImage.at<float>(m, n) * std::cos(angle);
+                    dftReal.at<float>(k, l) += inputImage.at<float>(m, n) * std::cos(angle);
+                    dftImag.at<float>(k, l) += inputImage.at<float>(m, n) * std::sin(angle);
                 }
             }
         }
@@ -100,20 +100,19 @@ std::vector<std::complex<double>> DFT(const std::vector<std::complex<double>> &v
     return result;
 }
 
-cv::Mat convertComplexVectorToMat(const std::vector<std::complex<float>> &complexVector, size_t _rows)
+cv::Mat convertComplexVectorToMat(const std::vector<std::complex<double>> &complexVector, size_t _rows, size_t _cols)
 {
-    int rows = 1; // одна строка, так как у нас вектор
-    int cols = complexVector.size();
-    cv::Mat resultMat(1, cols, CV_64FC2); // создаем матрицу для хранения комплексных чисел
+    cv::Mat resultMat(_rows, _cols, CV_64FC2);
 
-    for (int i = 0; i < cols; ++i)
+    for (int i = 0; i < _rows; ++i)
     {
-        resultMat.at<cv::Vec2d>(0, i)[0] = complexVector[i].real(); // реальная часть комплексного числа
-        resultMat.at<cv::Vec2d>(0, i)[1] = complexVector[i].imag(); // мнимая часть комплексного числа
+        for (int j = 0; j < _cols; ++j)
+        {
+            resultMat.at<cv::Vec2d>(i, j)[0] = complexVector[i * _cols + j].real(); // реальная часть комплексного числа
+            resultMat.at<cv::Vec2d>(i, j)[1] = complexVector[i * _cols + j].imag(); // мнимая часть комплексного числа
+        }
     }
-    cv::Mat reshapedMat = resultMat.reshape(0, _rows);
-
-    return reshapedMat;
+    return resultMat;
 }
 
 std::vector<std::complex<double>> IDFT(const std::vector<std::complex<double>> &vector)
@@ -135,11 +134,26 @@ std::vector<std::complex<double>> IDFT(const std::vector<std::complex<double>> &
     return result;
 }
 
-// Recursive radix-2 FFT implementation
-void fft(std::vector<std::complex<double>> &inputArray, bool invert)
+// Helper function to reverse bits in an integer
+unsigned int reverseBits(unsigned int num, int log2n)
 {
-    int n = inputArray.size();
-    if (n <= 1)
+    unsigned int result = 0;
+    for (int i = 0; i < log2n; ++i)
+    {
+        if ((num & (1 << i)) != 0)
+        {
+            result |= 1 << (log2n - 1 - i);
+        }
+    }
+    return result;
+}
+
+// Radix-2 Cooley-Tukey FFT algorithm
+void fft(std::vector<std::complex<double>> &inputArray, bool invert = false)
+{
+    const int n = inputArray.size();
+    const int log2n = static_cast<int>(log2(n));
+    if (n == 1)
     {
         return;
     }
@@ -147,106 +161,43 @@ void fft(std::vector<std::complex<double>> &inputArray, bool invert)
     {
         return;
     }
-
-    std::vector<std::complex<double>> a0(n / 2), a1(n / 2);
-    for (int i = 0, j = 0; i < n; i += 2, ++j)
+    // Perform the bit-reversal permutation in-place
+    for (int i = 0; i < n; ++i)
     {
-        a0[j] = inputArray[i];
-        a1[j] = inputArray[i + 1];
-    }
-
-    fft(a0, invert);
-    fft(a1, invert);
-
-    double angle = 2 * M_PI / n * (invert ? -1 : 1);
-    std::complex<double> w(1), wn(cos(angle), sin(angle));
-
-    for (int i = 0; i < n / 2; ++i)
-    {
-        std::complex<double> t = w * a1[i];
-        inputArray[i] = a0[i] + t;
-        inputArray[i + n / 2] = a0[i] - t;
-        if (invert)
+        int j = reverseBits(i, log2n);
+        if (j > i)
         {
-            inputArray[i] /= 2;
-            inputArray[i + n / 2] /= 2;
-        }
-        w *= wn;
-    }
-}
-
-void fft1D(std::vector<std::complex<double>> &inputArray, bool invert)
-{
-    int n = inputArray.size();
-    if (n <= 1 || !isPowerOfTwo(n))
-    {
-        return;
-    }
-
-    std::vector<std::complex<double>> a0(n / 2), a1(n / 2);
-    for (int i = 0, j = 0; i < n; i += 2, ++j)
-    {
-        a0[j] = inputArray[i];
-        a1[j] = inputArray[i + 1];
-    }
-
-    fft1D(a0, invert);
-    fft1D(a1, invert);
-
-    double angle = 2 * M_PI / n * (invert ? -1 : 1);
-    std::complex<double> w(1), wn(cos(angle), sin(angle));
-
-    for (int i = 0; i < n / 2; ++i)
-    {
-        std::complex<double> t = w * a1[i];
-        inputArray[i] = a0[i] + t;
-        inputArray[i + n / 2] = a0[i] - t;
-        if (invert)
-        {
-            inputArray[i] /= 2;
-            inputArray[i + n / 2] /= 2;
-        }
-        w *= wn;
-    }
-}
-
-void fft2D(cv::Mat &inputMatrix, bool invert)
-{
-    int rows = inputMatrix.rows;
-    int cols = inputMatrix.cols;
-
-    if (!isPowerOfTwo(rows) || !isPowerOfTwo(cols))
-    {
-        return;
-    }
-
-    // Применяем FFT к каждой строке
-    for (int i = 0; i < rows; ++i)
-    {
-        std::vector<std::complex<double>> row(cols);
-        for (int j = 0; j < cols; ++j)
-        {
-            row[j] = inputMatrix.at<std::complex<double>>(i, j);
-        }
-        fft1D(row, invert);
-        for (int j = 0; j < cols; ++j)
-        {
-            inputMatrix.at<std::complex<double>>(i, j) = row[j];
+            std::swap(inputArray[i], inputArray[j]);
         }
     }
 
-    // Применяем FFT к каждому столбцу
-    for (int j = 0; j < cols; ++j)
+    // Iterative FFT
+    for (int size = 2; size <= n; size *= 2)
     {
-        std::vector<std::complex<double>> column(rows);
-        for (int i = 0; i < rows; ++i)
+        double angle = 2 * M_PI / size * (invert ? -1 : 1);
+        std::complex<double> w(1), wn(cos(angle), sin(angle));
+
+        for (int i = 0; i < n; i += size)
         {
-            column[i] = inputMatrix.at<std::complex<double>>(i, j);
+            std::complex<double> w_temp(1);
+            for (int j = 0; j < size / 2; ++j)
+            {
+                std::complex<double> u = inputArray[i + j];
+                std::complex<double> v = w_temp * inputArray[i + j + size / 2];
+                inputArray[i + j] = u + v;
+                inputArray[i + j + size / 2] = u - v;
+                w_temp *= wn;
+            }
+            w *= wn;
         }
-        fft1D(column, invert);
-        for (int i = 0; i < rows; ++i)
+    }
+
+    // Normalize if inverting
+    if (invert)
+    {
+        for (int i = 0; i < n; ++i)
         {
-            inputMatrix.at<std::complex<double>>(i, j) = column[i];
+            inputArray[i] /= n;
         }
     }
 }
@@ -267,7 +218,6 @@ void swapQuadrants(cv::Mat &magI)
     q2.copyTo(q1);
     tmp.copyTo(q2);
 }
-
 
 void multiplyspectors(cv::Mat &complex1, cv::Mat &complex2)
 {
@@ -303,10 +253,10 @@ void lowPassFilter(cv::Mat &complexI, size_t radius)
     multiplyspectors(complexI, lowPassFilter);
 }
 
-void displayDFT(cv::Mat &input, const std::string & windowName,
-                        bool applyLowPassFilter = false,
-                        bool applyHighPassFilter = false,
-                        int borderRadius = 60)
+void displayDFT(cv::Mat &input, const std::string &windowName,
+                bool applyLowPassFilter = false,
+                bool applyHighPassFilter = false,
+                int borderRadius = 60)
 {
     cv::Mat padded;
     int m = cv::getOptimalDFTSize(input.rows);
@@ -320,8 +270,10 @@ void displayDFT(cv::Mat &input, const std::string & windowName,
 
     // Применение прямого преобразования Фурье
     cv::dft(complexI, complexI);
-    if (applyHighPassFilter) highPassFilter(complexI, borderRadius);
-    if (applyLowPassFilter) lowPassFilter(complexI, borderRadius);
+    if (applyHighPassFilter)
+        highPassFilter(complexI, borderRadius);
+    if (applyLowPassFilter)
+        lowPassFilter(complexI, borderRadius);
     // Расчет магнитуды и логарифмирование
     cv::split(complexI, planes);                    // planes[0] - действительная часть, planes[1] - мнимая часть
     cv::magnitude(planes[0], planes[1], planes[0]); // planes[0] = magnitude
@@ -333,7 +285,8 @@ void displayDFT(cv::Mat &input, const std::string & windowName,
 
     // Обрезка изображения
     magI = magI(cv::Rect(0, 0, magI.cols & -2, magI.rows & -2));
-    if (applyHighPassFilter || applyLowPassFilter) swapQuadrants(magI);
+    if (applyHighPassFilter || applyLowPassFilter)
+        swapQuadrants(magI);
     swapQuadrants(magI);
     // Нормализация
     cv::normalize(magI, magI, 0, 1, cv::NORM_MINMAX);
@@ -344,7 +297,21 @@ void displayDFT(cv::Mat &input, const std::string & windowName,
     normalize(reversed, reversed, 0, 1, cv::NORM_MINMAX);
     reversed.convertTo(reversed, CV_8U, 255);
     imshow(windowName + " revers", reversed);
+}
 
+Mat cor(Mat plate, Mat symbol) {
+    Mat result;
+    Mat img_display;
+    plate.copyTo(img_display);
+    int result_cols = plate.cols - symbol.cols + 1;
+    int result_rows = plate.rows - symbol.rows + 1;
+    result.create(result_rows, result_cols, CV_32FC1);
+    matchTemplate(plate, symbol, result, 1);
+    normalize(result, result, 0, 1, NORM_MINMAX, -1, Mat());
+    double min_val;
+    minMaxLoc(result, &min_val, NULL);
+    threshold(result, result, min_val + 0.02, 255, THRESH_BINARY_INV);
+    return result;
 }
 
 std::vector<std::complex<double>> convertMatToVector(cv::Mat image)
@@ -359,17 +326,14 @@ std::vector<std::complex<double>> convertMatToVector(cv::Mat image)
     return complexVector;
 }
 
-int correlate(Mat &input, Mat &sample, const float thresholdMul)
+void correlate(Mat &input, Mat &sample, const float thresholdMul)
 {
-    if (sample.empty())
+    if (input.empty() || (sample.empty()))
     {
-        return -1;
+        return;
     }
-    if (sample.empty())
-    {
-        return -2;
-    }
-    sample.convertTo(sample, CV_32FC1);
+    input.convertTo(input, CV_32F);
+    sample.convertTo(sample, CV_32F);
     Size dftSize;
     dftSize.width = getOptimalDFTSize(input.cols + sample.cols - 1);
     dftSize.height = getOptimalDFTSize(input.rows + sample.rows - 1);
@@ -416,7 +380,6 @@ int correlate(Mat &input, Mat &sample, const float thresholdMul)
         }
     }
     imshow("cropped image", croppedImage);
-    waitKey(0);
 }
 
 void test_dft()
@@ -436,9 +399,7 @@ void test_dft()
     Mat planes[] = {Mat_<float>(padded), Mat::zeros(padded.size(), CV_32F)};
     Mat complexI;
     merge(planes, 2, complexI);
-    complexI = DFT_IMAGE(complexI);
-    // fft2D(image, false);
-    std::cout << image;
+    complexI = DFT_IMAGE(image);
     split(complexI, planes);                    // planes[0] = Re(DFT(I), planes[1] = Im(DFT(I))
     magnitude(planes[0], planes[1], planes[0]); // planes[0] = magnitude
     Mat magI = planes[0];
@@ -452,7 +413,11 @@ void test_dft()
                                               // viewable image form (float between values 0 and 1).
                                               // Show the result
     imshow("spectrum magnitude", magI);
-    waitKey(0);
+    cv::Mat reversed;
+    reversed = IDFT_IMAGE(complexI);
+    normalize(reversed, reversed, 0, 1, cv::NORM_MINMAX);
+    reversed.convertTo(reversed, CV_8U, 255);
+    imshow("revers", reversed);
 }
 
 void test_fft()
@@ -463,8 +428,8 @@ void test_fft()
         std::cout << "Could't open image" << std::endl;
     }
     cv::resize(image, image, cv::Size(128, 128));
-    imshow("Input Image", image);
-    image.convertTo(image, CV_32F);
+    imshow("input Image", image);
+    std::vector<std::complex<double>> inputArray = convertMatToVector(image);
     Mat padded; // expand input image to optimal size
     int m = getOptimalDFTSize(image.rows);
     int n = getOptimalDFTSize(image.cols); // on the border add zero values
@@ -472,9 +437,8 @@ void test_fft()
     Mat planes[] = {Mat_<float>(padded), Mat::zeros(padded.size(), CV_32F)};
     Mat complexI;
     merge(planes, 2, complexI);
-    complexI = DFT_IMAGE(complexI);
-    fft2D(image, false);
-    std::cout << image;
+    fft(inputArray, false);
+    complexI = convertComplexVectorToMat(inputArray, m, n);
     split(complexI, planes);                    // planes[0] = Re(DFT(I), planes[1] = Im(DFT(I))
     magnitude(planes[0], planes[1], planes[0]); // planes[0] = magnitude
     Mat magI = planes[0];
@@ -488,11 +452,23 @@ void test_fft()
                                               // viewable image form (float between values 0 and 1).
                                               // Show the result
     imshow("spectrum magnitude", magI);
-    waitKey(0);
+    fft(inputArray, true);
+    // cv::Mat reversed = convertComplexVectorToImageReal(inputArray, m, n);
+    cv::Mat reversed;
+    Mat planesOutput[] = {Mat_<float>(padded), Mat::zeros(padded.size(), CV_32F)};
+    merge(planesOutput, 2, reversed);
+    reversed = convertComplexVectorToMat(inputArray, m, n);
+    split(reversed, planesOutput);
+    Mat output = planesOutput[0];
+    cv::normalize(output, output, 0, 1, cv::NORM_MINMAX); // Нормализуем значения для отображения
+    cv::imshow("Reversed Image", output);
 }
 
-void test_time() {
+void test_time()
+{
     cv::Mat image = cv::imread("D:/repositories/OpenCV/images/photo_2023-12-02_19-40-35.jpg", cv::IMREAD_GRAYSCALE);
+    std::vector<std::complex<double>> InputArray = convertMatToVector(image);
+    
     if (image.empty())
     {
         std::cout << "Could't open image" << std::endl;
@@ -506,7 +482,7 @@ void test_time() {
     std::cout << "Time wrapped by DFT " << elapsed_custom.count() << " seconds" << std::endl;
 
     auto start_custom_radix = std::chrono::high_resolution_clock::now();
-    fft2D(image, false);
+    fft(InputArray, false);
     auto end_custom_radix = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed_custom_radix = end_custom_radix - start_custom_radix;
     std::cout << "Time wrapped by FFT " << elapsed_custom_radix.count() << " seconds" << std::endl;
@@ -519,7 +495,8 @@ void test_time() {
     std::cout << "Time wrapped by FFT " << elapsed_custom_cv.count() << " seconds" << std::endl;
 }
 
-void test_filters() {
+void test_filters()
+{
     cv::Mat image = cv::imread("D:/repositories/OpenCV/images/220px-Lenna.png", cv::IMREAD_GRAYSCALE);
     if (image.empty())
     {
@@ -531,7 +508,7 @@ void test_filters() {
     cv::Sobel(image, sobelY, CV_32F, 0, 1);
 
     cv::Mat boxFilter;
-    cv::boxFilter(image, boxFilter, -1, cv::Size(3,3));
+    cv::boxFilter(image, boxFilter, -1, cv::Size(3, 3));
 
     cv::Mat laplacian;
     cv::Laplacian(image, laplacian, CV_32F);
@@ -551,23 +528,19 @@ void test_filters() {
     cv::imshow("Laplacian", laplacian);
 }
 
-void test_correlate() {
-    cv::Mat image = cv::imread("D:/repositories/OpenCV/images/nomera.jpg", cv::IMREAD_GRAYSCALE);
-    if (image.empty())
-    {
-        std::cout << "Could't open image" << std::endl;
-    }
-    image.convertTo(image, CV_32F);
-    cv::resize(image, image, cv::Size(3,3));
+void test_correlate()
+{
+    cv::Mat image = cv::imread("D:/repositories/OpenCV/images/cat.jpg", cv::IMREAD_GRAYSCALE);
     imshow("original", image);
-    image.convertTo(image, CV_32FC1);
-    Mat sample = imread("D:/repositories/OpenCV/images/symbol_6.jpg", IMREAD_GRAYSCALE);
-
+    Mat sample = imread("D:/repositories/OpenCV/images/glaz.jpg", IMREAD_GRAYSCALE);
     imshow("Sample", sample);
-    correlate(image, sample, 0.999);
+    // correlate(image, sample, 0.99);
+    Mat result = cor(image, sample);
+    imshow("result", result);
 }
 
-void test_filters() {
+void test_high_low_pass()
+{
     cv::Mat image = cv::imread("D:/repositories/OpenCV/images/220px-Lenna.png", cv::IMREAD_GRAYSCALE);
     if (image.empty())
     {
@@ -578,11 +551,15 @@ void test_filters() {
     displayDFT(image, "Original Image DFT Magnitude", true, false, 60);
     // Apply HighPassFilter
     // displayDFT(image, "Original Image DFT Magnitude", false, true, 60);
-   
 }
+
 int main()
 {
-    test_fft();
+    // test_dft();
+    // test_fft();
+    // test_filters();
+    // test_high_low_pass();
+    test_correlate();
     waitKey(0);
     return 0;
 }
