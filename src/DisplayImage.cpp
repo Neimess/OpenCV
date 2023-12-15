@@ -235,28 +235,98 @@ void multiplyspectors(cv::Mat &complex1, cv::Mat &complex2)
     }
 }
 
-void highPassFilter(cv::Mat &complexI, size_t radius)
+void lowFilter(cv::Mat &inputImage, size_t radius)
 {
+    cv::Mat padded;
+    int m = cv::getOptimalDFTSize(inputImage.rows);
+    int n = cv::getOptimalDFTSize(inputImage.cols);
+    cv::copyMakeBorder(inputImage, padded, 0, m - inputImage.rows, 0, n - inputImage.cols, cv::BORDER_CONSTANT, cv::Scalar::all(0));
+
+    // Создание комплексного массива для хранения результата преобразования Фурье
+    cv::Mat planes[] = {cv::Mat_<float>(padded), cv::Mat::zeros(padded.size(), CV_32F)};
+    cv::Mat complexI;
+    cv::merge(planes, 2, complexI);
+
+    // Применение прямого преобразования Фурье
+    cv::dft(complexI, complexI);
+    swapQuadrants(complexI);
     Mat highPassFilter = Mat::ones(complexI.rows, complexI.cols, CV_32F);
     int centerX = highPassFilter.cols / 2;
     int centerY = highPassFilter.rows / 2;
     circle(highPassFilter, Point(centerX, centerY), radius, Scalar(0), -1);
     multiplyspectors(complexI, highPassFilter);
+
+    // Расчет магнитуды и логарифмирование
+    cv::split(complexI, planes);                    // planes[0] - действительная часть, planes[1] - мнимая часть
+    cv::magnitude(planes[0], planes[1], planes[0]); // planes[0] = magnitude
+    cv::Mat magI = planes[0];
+
+    // Нормализация для отображения
+    magI += cv::Scalar::all(1);
+    cv::log(magI, magI);
+    
+    // Обрезка изображения
+    magI = magI(cv::Rect(0, 0, magI.cols & -2, magI.rows & -2));
+    // Нормализация
+    cv::normalize(magI, magI, 0, 1, cv::NORM_MINMAX);
+    // Сдвинуть нулевую частоту спектра обратно в левый верхний угол
+    swapQuadrants(complexI);
+    cv::imshow("lowPassFilter", magI);
+
+    cv::Mat reversed;
+    cv::idft(complexI, reversed, cv::DFT_SCALE | cv::DFT_REAL_OUTPUT);
+    normalize(reversed, reversed, 0, 1, cv::NORM_MINMAX);
+    reversed.convertTo(reversed, CV_8U, 255);
+    imshow("lowPassReversed", reversed);
 }
 
-void lowPassFilter(cv::Mat &complexI, size_t radius)
+void highFilter(cv::Mat &inputImage, size_t radius)
 {
+    cv::Mat padded;
+    int m = cv::getOptimalDFTSize(inputImage.rows);
+    int n = cv::getOptimalDFTSize(inputImage.cols);
+    cv::copyMakeBorder(inputImage, padded, 0, m - inputImage.rows, 0, n - inputImage.cols, cv::BORDER_CONSTANT, cv::Scalar::all(0));
+
+    // Создание комплексного массива для хранения результата преобразования Фурье
+    cv::Mat planes[] = {cv::Mat_<float>(padded), cv::Mat::zeros(padded.size(), CV_32F)};
+    cv::Mat complexI;
+    cv::merge(planes, 2, complexI);
+
+    // Применение прямого преобразования Фурье
+    cv::dft(complexI, complexI);
+    swapQuadrants(complexI);
     Mat lowPassFilter = Mat::zeros(complexI.rows, complexI.cols, CV_32F);
     int centerX = lowPassFilter.cols / 2;
     int centerY = lowPassFilter.rows / 2;
     circle(lowPassFilter, Point(centerX, centerY), radius, Scalar(1), -1);
     multiplyspectors(complexI, lowPassFilter);
+
+    // Расчет магнитуды и логарифмирование
+    cv::split(complexI, planes);                    // planes[0] - действительная часть, planes[1] - мнимая часть
+    cv::magnitude(planes[0], planes[1], planes[0]); // planes[0] = magnitude
+    cv::Mat magI = planes[0];
+
+    // Нормализация для отображения
+    magI += cv::Scalar::all(1);
+    cv::log(magI, magI);
+    
+    // Обрезка изображения
+    magI = magI(cv::Rect(0, 0, magI.cols & -2, magI.rows & -2));
+    // Нормализация
+    cv::normalize(magI, magI, 0, 1, cv::NORM_MINMAX);
+    // Сдвинуть нулевую частоту спектра обратно в левый верхний угол
+    swapQuadrants(complexI);
+    cv::imshow("HighFilter", magI);
+
+    cv::Mat reversed;
+    cv::idft(complexI, reversed, cv::DFT_SCALE | cv::DFT_REAL_OUTPUT);
+    normalize(reversed, reversed, 0, 1, cv::NORM_MINMAX);
+    reversed.convertTo(reversed, CV_8U, 255);
+    imshow("HighFilterReversed", reversed);
+    
 }
 
-void displayDFT(cv::Mat &input, const std::string &windowName,
-                bool applyLowPassFilter = false,
-                bool applyHighPassFilter = false,
-                int borderRadius = 60)
+void displayDFT(cv::Mat &input, const std::string & windowName)
 {
     cv::Mat padded;
     int m = cv::getOptimalDFTSize(input.rows);
@@ -264,16 +334,12 @@ void displayDFT(cv::Mat &input, const std::string &windowName,
     cv::copyMakeBorder(input, padded, 0, m - input.rows, 0, n - input.cols, cv::BORDER_CONSTANT, cv::Scalar::all(0));
 
     // Создание комплексного массива для хранения результата преобразования Фурье
-    cv::Mat planes[] = {cv::Mat_<float>(padded), cv::Mat::zeros(padded.size(), CV_64F)};
+    cv::Mat planes[] = {cv::Mat_<float>(padded), cv::Mat::zeros(padded.size(), CV_32F)};
     cv::Mat complexI;
     cv::merge(planes, 2, complexI);
 
     // Применение прямого преобразования Фурье
     cv::dft(complexI, complexI);
-    if (applyHighPassFilter)
-        highPassFilter(complexI, borderRadius);
-    if (applyLowPassFilter)
-        lowPassFilter(complexI, borderRadius);
     // Расчет магнитуды и логарифмирование
     cv::split(complexI, planes);                    // planes[0] - действительная часть, planes[1] - мнимая часть
     cv::magnitude(planes[0], planes[1], planes[0]); // planes[0] = magnitude
@@ -285,8 +351,6 @@ void displayDFT(cv::Mat &input, const std::string &windowName,
 
     // Обрезка изображения
     magI = magI(cv::Rect(0, 0, magI.cols & -2, magI.rows & -2));
-    if (applyHighPassFilter || applyLowPassFilter)
-        swapQuadrants(magI);
     swapQuadrants(magI);
     // Нормализация
     cv::normalize(magI, magI, 0, 1, cv::NORM_MINMAX);
@@ -297,21 +361,7 @@ void displayDFT(cv::Mat &input, const std::string &windowName,
     normalize(reversed, reversed, 0, 1, cv::NORM_MINMAX);
     reversed.convertTo(reversed, CV_8U, 255);
     imshow(windowName + " revers", reversed);
-}
 
-Mat cor(Mat plate, Mat symbol) {
-    Mat result;
-    Mat img_display;
-    plate.copyTo(img_display);
-    int result_cols = plate.cols - symbol.cols + 1;
-    int result_rows = plate.rows - symbol.rows + 1;
-    result.create(result_rows, result_cols, CV_32FC1);
-    matchTemplate(plate, symbol, result, 1);
-    normalize(result, result, 0, 1, NORM_MINMAX, -1, Mat());
-    double min_val;
-    minMaxLoc(result, &min_val, NULL);
-    threshold(result, result, min_val + 0.02, 255, THRESH_BINARY_INV);
-    return result;
 }
 
 std::vector<std::complex<double>> convertMatToVector(cv::Mat image)
@@ -326,60 +376,74 @@ std::vector<std::complex<double>> convertMatToVector(cv::Mat image)
     return complexVector;
 }
 
-void correlate(Mat &input, Mat &sample, const float thresholdMul)
+void expandCanvas(cv::Mat& img32FC1, cv::Size size)
 {
-    if (input.empty() || (sample.empty()))
-    {
-        return;
-    }
-    input.convertTo(input, CV_32F);
-    sample.convertTo(sample, CV_32F);
+	if (img32FC1.empty())
+	{
+		return;
+	}
+	if (img32FC1.rows > size.height || img32FC1.cols > size.width)
+	{
+		return;
+	}
+
+	cv::Mat expandedImg(size, CV_32FC1, cv::Scalar(0));
+	cv::Mat tempROI(expandedImg, cv::Rect(0, 0, img32FC1.cols, img32FC1.rows));
+	img32FC1.copyTo(tempROI);
+	img32FC1 = expandedImg.clone();
+
+	return;
+}
+
+void correlation(cv::Mat& inputImage, cv::Mat& sample, const double& threshold_minus)
+{
+	if (inputImage.empty() | sample.empty())
+	{
+		return;
+	}
+    inputImage.convertTo(inputImage, CV_32FC1);
+    sample.convertTo(sample, CV_32FC1);
+	cv::Scalar avg_value_1;
+	cv::Mat deviation_1;
+	cv::meanStdDev(sample, avg_value_1, deviation_1);  // Вычисление среднего значения и стандратного отклонения пикселей в sample
+
+	cv::Scalar avg_value_2;
+	cv::Mat deviation_2;
+	cv::meanStdDev(inputImage, avg_value_2, deviation_2); // Вычисление среднего значения и стандратного отклонения пикселей в изображении
+
+    // Центирование данных относительно их среднего значения
+	sample -= avg_value_1; 
+	inputImage -= avg_value_2;
+
     Size dftSize;
-    dftSize.width = getOptimalDFTSize(input.cols + sample.cols - 1);
-    dftSize.height = getOptimalDFTSize(input.rows + sample.rows - 1);
-    Mat expandedImage(dftSize, CV_32FC1, Scalar(0));
-    Mat tempROI(expandedImage, Rect(0, 0, input.cols, input.rows));
-    input.copyTo(tempROI);
-    Mat expandedSample(dftSize, CV_32FC1, Scalar(0));
-    Mat tempROI2(expandedSample, Rect(0, 0, sample.cols, sample.rows));
-    sample.copyTo(tempROI2);
+    dftSize.width = getOptimalDFTSize(inputImage.cols + sample.cols - 1);
+    dftSize.height = getOptimalDFTSize(inputImage.rows + sample.rows - 1);
 
-    Mat dftOfImage(expandedImage.cols, expandedImage.rows, CV_32FC2);
-    dft(expandedImage, dftOfImage, DFT_COMPLEX_OUTPUT);
-    Mat dftOfSample(expandedSample.cols, expandedSample.rows, CV_32FC2);
-    dft(expandedSample, dftOfSample, DFT_COMPLEX_OUTPUT);
+	expandCanvas(sample, dftSize);
+    expandCanvas(inputImage, dftSize);
 
-    Mat dftCorrelation(dftSize, CV_32FC2);
-    mulSpectrums(dftOfImage, dftOfSample, dftCorrelation, true);
+    Mat dftOfImage(inputImage.size(), CV_32FC2);
+    dft(inputImage, dftOfImage, DFT_COMPLEX_OUTPUT);
+    Mat dftOfSample(inputImage.size(), CV_32FC2);
+    dft(sample, dftOfSample, DFT_COMPLEX_OUTPUT);
 
-    Mat uncroppedOutputImage(dftSize, CV_32FC2);
-    idft(dftCorrelation, uncroppedOutputImage, DFT_INVERSE | DFT_REAL_OUTPUT);
-    normalize(uncroppedOutputImage, uncroppedOutputImage, 0.0f, 1.0f, NORM_MINMAX);
+    Mat dftCorrelation(inputImage.size(), CV_32FC2);
+	cv::mulSpectrums(dftOfImage, dftOfSample, dftCorrelation, 0, 1);
 
-    Mat croppedImage(uncroppedOutputImage, Rect(0, 0, input.cols, input.rows));
-    imshow("Before threshold", croppedImage);
+	idft(dftCorrelation, dftCorrelation, DFT_INVERSE | DFT_REAL_OUTPUT);
+	normalize(dftCorrelation, dftCorrelation, 0, 1, cv::NORM_MINMAX);
 
-    float maxIntensity = 0;
-    for (int i = 0; i < input.rows; i++)
-    {
-        for (int j = 0; j < input.cols; j++)
-        {
-            const float currentPixel = croppedImage.at<float>(i, j);
-            if (currentPixel > maxIntensity)
-                maxIntensity = currentPixel;
-        }
-    }
-    const float threshold = thresholdMul * maxIntensity;
-    for (int i = 0; i < input.rows; i++)
-    {
-        for (int j = 0; j < input.cols; j++)
-        {
-            const float currentPixel = croppedImage.at<float>(i, j);
-            if (currentPixel < threshold)
-                croppedImage.at<float>(i, j) = 0;
-        }
-    }
-    imshow("cropped image", croppedImage);
+	cv::Mat withoutThreshold;
+	dftCorrelation.convertTo(withoutThreshold, CV_8UC1, 255);
+	cv::imshow("beforeThreshold", withoutThreshold);
+
+	double thresh;
+	cv::minMaxLoc(dftCorrelation, NULL, &thresh);
+	thresh -= threshold_minus;
+	cv::threshold(dftCorrelation, dftCorrelation, thresh, 1, cv::THRESH_BINARY);
+	dftCorrelation.convertTo(dftCorrelation, CV_8UC1, 255);
+
+    imshow("foundedSample", dftCorrelation);
 }
 
 void test_dft()
@@ -453,7 +517,6 @@ void test_fft()
                                               // Show the result
     imshow("spectrum magnitude", magI);
     fft(inputArray, true);
-    // cv::Mat reversed = convertComplexVectorToImageReal(inputArray, m, n);
     cv::Mat reversed;
     Mat planesOutput[] = {Mat_<float>(padded), Mat::zeros(padded.size(), CV_32F)};
     merge(planesOutput, 2, reversed);
@@ -534,9 +597,7 @@ void test_correlate()
     imshow("original", image);
     Mat sample = imread("D:/repositories/OpenCV/images/glaz.jpg", IMREAD_GRAYSCALE);
     imshow("Sample", sample);
-    // correlate(image, sample, 0.99);
-    Mat result = cor(image, sample);
-    imshow("result", result);
+    correlation(image, sample, 0.02);
 }
 
 void test_high_low_pass()
@@ -547,9 +608,11 @@ void test_high_low_pass()
         std::cout << "Could't open image" << std::endl;
     }
     imshow("original", image);
-    // Apply lowPassFilter
-    displayDFT(image, "Original Image DFT Magnitude", true, false, 60);
-    // Apply HighPassFilter
+    // Apply lowFilter
+    lowFilter(image, 30);
+    // Apply Highfilter
+    highFilter(image, 30);
+    
     // displayDFT(image, "Original Image DFT Magnitude", false, true, 60);
 }
 
@@ -558,8 +621,8 @@ int main()
     // test_dft();
     // test_fft();
     // test_filters();
-    // test_high_low_pass();
-    test_correlate();
+    test_high_low_pass();
+    // test_correlate();
     waitKey(0);
     return 0;
 }
