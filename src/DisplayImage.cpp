@@ -441,9 +441,19 @@ void correlation(cv::Mat& inputImage, cv::Mat& sample, const double& threshold_m
 	cv::minMaxLoc(dftCorrelation, NULL, &thresh);
 	thresh -= threshold_minus;
 	cv::threshold(dftCorrelation, dftCorrelation, thresh, 1, cv::THRESH_BINARY);
-	dftCorrelation.convertTo(dftCorrelation, CV_8UC1, 255);
+    cv::Mat colorImage(dftCorrelation.size(), CV_8UC3);
+    cv::cvtColor(dftCorrelation, colorImage, cv::COLOR_GRAY2BGR);
+    std::vector<cv::Point> nonzeroPixels;
+    cv::findNonZero(dftCorrelation, nonzeroPixels);
+    int radius = 50; 
+    cv::Scalar color(0, 0, 255); 
 
+    for (const auto& point : nonzeroPixels) {
+        cv::circle(colorImage, point, radius, color, 1);
+    }
+    dftCorrelation.convertTo(dftCorrelation, CV_8UC1, 255);
     imshow("foundedSample", dftCorrelation);
+    imshow("Result Image", colorImage);
 }
 
 void test_dft()
@@ -621,8 +631,8 @@ int main()
     // test_dft();
     // test_fft();
     // test_filters();
-    test_high_low_pass();
-    // test_correlate();
+    // test_high_low_pass();
+    test_correlate();
     waitKey(0);
     return 0;
 }
